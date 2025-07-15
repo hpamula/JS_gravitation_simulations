@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finally Gravity Animation</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: black;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+// huge thanks to:
+// https://css-tricks.com/creating-your-own-gravity-and-space-simulator/
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let width, height;
+(function resizeCanvas() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  window.addEventListener('resize', resizeCanvas);
+})();
+
+
+class nBodyProblem {
+  constructor(params) {
+    this.N = params.N;
+    this.g = params.g;
+    this.dt = params.dt;
+    this.softeningConstant = params.softeningConstant;
+    this.masses = params.masses;
+    this.massMiddle = Array(N).fill(0);
+  }
+  updatePositionVectors() {
+    this.massMiddle.fill(0);
+    this.masses.forEach(mass => {
+      for (let i = 0; i < this.N; i++) {
+        mass.pos[i] += mass.v[i] * this.dt;
+        this.massMiddle[i] += mass.pos[i];
+      }
+    });
+    for (let i = 0; i < this.N; i++) {
+      this.massMiddle[i] /= this.masses.length;
+    }
+    return this;
+  }
+  updateVelocityVectors() {
+    this.masses.forEach(mass => {
+      for (let i = 0; i < this.N; i++) {
+        mass.v[i] += mass.a[i] * this.dt;
+      }
+    });
+    return this;
+  }
+
+  updateAccelerationVectors() {
+    this.masses.forEach(massI => {
+      let a = Array(this.N).fill(0);
+      let d = Array.from({length: this.N});
+      this.masses.forEach(massJ => {
+        let distSq = 0;
+        if (massI == massJ) return;
+        for (let i = 0; i < this.N; i++) {
+          d[i] = massJ.pos[i] - massI.pos[i];
+          distSq += d[i] * d[i];
+        }
+        const aSummed = (this.g * massJ.m) /
+          (distSq * Math.sqrt(distSq + this.softeningConstant));
+        for (let i = 0; i < this.N; i++) {
+          a[i] += d[i] * aSummed;
+        }
+      });
+      for (let i = 0; i < this.N; i++) {
+        massI.a[i] = a[i];
+      }
+    });
+    return this;
+  }
+}
+
+function getRandomValue(range) {
+  return (Math.random() - 0.5) * range;
+}
+function getRandom(range) {
+  return Math.random() * range;
+}
+
+
+class Manifestation {
+
+  constructor(ctx, trailLength) {
+    this.ctx = ctx;
+    this.trailLength = trailLength;
+    this.positions = [];
+  }
+
+  storePosition(dimensions) {
+    this.positions.push(dimensions);
+    if (this.positions.length > this.trailLength) 
+      this.positions.shift();
+  }
+
+  draw(dimensions, massMiddle) {
+    this.storePosition(dimensions);
+    const positionsLen = this.positions.length;
+    for (let i = 0; i < positionsLen; i++) {
+      let transparency;
+      let circleScaleFactor;
+      const scaleFactor = i / positionsLen;
+      // if (i === positionsLen - 1) {
+        transparency = 1;
+        circleScaleFactor = 1;
+      // } else {
+      //   transparency = scaleFactor / 2;
+      //   circleScaleFactor = scaleFactor;
+      // }
+      this.ctx.beginPath();
+      this.ctx.arc(
+        halfWidth + this.positions[i][0],
+        halfHeight + this.positions[i][1],
+        // circleScaleFactor * Math.max(1, this.positions[i][2]),
+        // circleScaleFactor * (this.positions[i][5] + 1000) * 0.001,
+        circleScaleFactor * Math.max(0.5, (this.positions[i][5] + 1000) * 0.0015),
+        0,
+        2 * Math.PI
+      );
+      this.ctx.fillStyle = `rgba(
+        ${(this.positions[i][2] - massMiddle[2]) * RGBscale + 128}, 
+        ${(this.positions[i][3] - massMiddle[3]) * RGBscale + 128}, 
+        ${(this.positions[i][4] - massMiddle[4]) * RGBscale + 128},
+        ${transparency})`;
+
+      this.ctx.fill();
+    }
+  }
+}
+
+function getMasses(posRange=20, vRange=50) {
+  return Array.from({ length: 400 }, () => {
+    const pos = Array(N).fill(0).map(() => getRandomValue(posRange));
+    const v = Array(N).fill(0).map(() => getRandomValue(vRange));
+    const a = Array(N).fill(0);
+    return {
+      m: 1,
+      pos: pos,
+      v: v,
+      a: a
+    };
+  });
+}
+
+N = 6;
+const masses = getMasses();
+const g = 130;
+const dt = 1;
+const softeningConstant = 0.15;
+innerSolarSystem = new nBodyProblem({
+  N,
+  g,
+  dt,
+  masses, 
+  softeningConstant
+});
+
+scale = 1;
+RGBscale = 1 / scale;
+const trailLength = 1;
+const populateManifestations = masses => {
+  masses.forEach(
+    mass =>
+    (mass["manifestation"] = new Manifestation(
+      ctx,
+      trailLength
+    ))
+  );
+};
+populateManifestations(innerSolarSystem.masses);
+const halfWidth = width / 2
+const halfHeight = height / 2
+const animate = () => {
+  innerSolarSystem
+    .updatePositionVectors()
+    .updateAccelerationVectors()
+    .updateVelocityVectors();
+  // ctx.clearRect(0, 0, width, height);
+  // new Manifestation(
+  //   ctx,
+  //   trailLength
+  // ).draw(
+  //   innerSolarSystem.massMiddle.slice(0, N).map((coord, index) => index === 5 ? 10000 : coord  * scale), innerSolarSystem.massMiddle
+  // );
+  innerSolarSystem.masses.forEach(mass => {
+    mass.manifestation.draw(
+      mass.pos.slice(0, N).map(coord => coord * scale), innerSolarSystem.massMiddle
+    );
+  });
+  requestAnimationFrame(animate);
+};
+animate();
+function funny() {
+  setTimeout(() => {innerSolarSystem.masses = getMasses();
+    populateManifestations(innerSolarSystem.masses);funny();}, 10000)
+}
+funny();
+
+</script>
+</body>
+</html>

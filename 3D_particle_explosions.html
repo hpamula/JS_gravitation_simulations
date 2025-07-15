@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finally Gravity Animation</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: black;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+// huge thanks to:
+// https://css-tricks.com/creating-your-own-gravity-and-space-simulator/
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let width, height;
+(function resizeCanvas() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  window.addEventListener('resize', resizeCanvas);
+})();
+
+class nBodyProblem {
+  constructor(params) {
+    this.g = params.g;
+    this.dt = params.dt;
+    this.softeningConstant = params.softeningConstant;
+    this.masses = params.masses;
+  }
+  updatePositionVectors() {
+    this.masses.forEach(massI => {
+      massI.x += massI.vx * this.dt;
+      massI.y += massI.vy * this.dt;
+      massI.z += massI.vz * this.dt;
+    });
+    return this;
+  }
+  updateVelocityVectors() {
+    this.masses.forEach(massI => {
+      massI.vx += massI.ax * this.dt;
+      massI.vy += massI.ay * this.dt;
+      massI.vz += massI.az * this.dt;
+    });
+    return this;
+  }
+
+  updateAccelerationVectors() {
+    this.masses.forEach(massI => {
+      let ax = 0;
+      let ay = 0;
+      let az = 0;
+      this.masses.forEach(massJ => {
+        if (massI !== massJ) {
+          const dx = massJ.x - massI.x;
+          const dy = massJ.y - massI.y;
+          const dz = massJ.z - massI.z;
+          const distSq = dx * dx + dy * dy + dz * dz;
+          const a = (this.g * massJ.m) / 
+            (distSq * Math.sqrt(distSq + this.softeningConstant));
+          ax += dx * a;
+          ay += dy * a;
+          az += dz * a;
+        }
+      });
+      massI.ax = ax;
+      massI.ay = ay;
+      massI.az = az;
+    });
+    return this;
+  }
+}
+
+function getRandomValue(range) {
+  return (Math.random() - 0.5) * range;
+}
+function getRandom(range) {
+  return Math.random() * range;
+}
+
+
+
+let radius = 1;
+class Manifestation {
+
+  constructor(ctx, trailLength, radius) {
+    this.ctx = ctx;
+    this.trailLength = trailLength;
+    this.radius = radius;
+    this.positions = [];
+  }
+
+  storePosition(x, y) {
+    this.positions.push({ x, y });
+    if (this.positions.length > this.trailLength) 
+      this.positions.shift();
+  }
+
+  draw(x, y) {
+    this.storePosition(x, y);
+
+    const positionsLen = this.positions.length;
+
+    for (let i = 0; i < positionsLen; i++) {
+      let transparency;
+      let circleScaleFactor;
+
+      const scaleFactor = i / positionsLen;
+
+      if (i === positionsLen - 1) {
+        transparency = 1;
+        circleScaleFactor = 1;
+      } else {
+        transparency = scaleFactor / 2;
+        circleScaleFactor = scaleFactor;
+      }
+
+      this.ctx.beginPath();
+      this.ctx.arc(
+        this.positions[i].x,
+        this.positions[i].y,
+        circleScaleFactor * radius,
+        0,
+        2 * Math.PI
+      );
+      this.ctx.fillStyle = `rgb(`+globalRed+`, `+globalGreen+`, `+globalBlue+`, ${transparency})`;
+
+      this.ctx.fill();
+    }
+  }
+}
+
+function getMasses(shiftx=0, shifty=0, pos=20, v=57) {
+  shiftx = getRandomValue(shiftx)
+  shifty = getRandomValue(shifty)
+  return Array.from({ length: 1000 }, (_, i) => ({
+    m: 1,
+    x: getRandomValue(pos)+shiftx,
+    y: getRandomValue(pos)+shifty,
+    z: getRandomValue(pos),
+    vx: getRandomValue(v),
+    vy: getRandomValue(v),
+    vz: getRandomValue(v)
+    }));
+}
+const masses = getMasses();
+const g = 130;
+const dt = 1;
+const softeningConstant = 0.15;
+innerSolarSystem = new nBodyProblem({
+  g,
+  dt,
+  masses, 
+  softeningConstant
+});
+
+scale = 1;
+const trailLength = 1;
+const populateManifestations = masses => {
+  masses.forEach(
+    mass =>
+    (mass["manifestation"] = new Manifestation(
+      ctx,
+      trailLength,
+      radius
+    ))
+  );
+};
+populateManifestations(innerSolarSystem.masses);
+const halfWidth = width / 2
+const halfHeight = height / 2
+const animate = () => {
+  innerSolarSystem
+    .updatePositionVectors()
+    .updateAccelerationVectors()
+    .updateVelocityVectors();
+  ctx.clearRect(0, 0, width, height);
+  innerSolarSystem.masses.forEach(massI => {
+    massI.manifestation.draw(halfWidth + massI.x * scale,
+      halfHeight + massI.y * scale);
+  });
+  requestAnimationFrame(animate);
+};
+globalRed = 255;
+globalGreen = 0;
+globalBlue = 0;
+animate();
+function funny() {
+  radius = getRandom(2)+1;
+  scale = 0.5;
+  globalRed = getRandom(255);
+  globalGreen = getRandom(255);
+  globalBlue = getRandom(255);
+  brighten = 255-Math.max(globalRed, globalGreen, globalBlue);
+  globalRed += brighten;
+  globalGreen += brighten;
+  globalBlue += brighten;
+  setTimeout(() => {innerSolarSystem.masses = getMasses(2000, 1000);
+    populateManifestations(innerSolarSystem.masses);funny();}, 1500)
+}
+funny();
+
+</script>
+</body>
+</html>
